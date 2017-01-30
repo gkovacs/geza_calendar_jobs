@@ -22,5 +22,5 @@ Use the [scheduler](https://elements.heroku.com/addons/scheduler) addon
 Can do a one-time run with:
 
 ```bash
-heroku --app gcalendar app
+heroku run --app gcalendar app
 ```
