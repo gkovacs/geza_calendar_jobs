@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "cfy": "^1.0.18",
+    "getsecret": "^1.0.1",
+    "googleapis": "^16.1.0",
+    "moment": "^2.17.1"
+  }
+}
