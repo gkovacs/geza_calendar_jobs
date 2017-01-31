@@ -21,6 +21,7 @@ auth = new google.auth.JWT(
 auth.projectId = key.project_id
 
 calendarId = getsecret('available_meals_calendar_id')
+primary_calendarId = getsecret('primary_calendar_id')
 
 postpone_event = (evt, number, unit) ->
   new_start = moment(evt.start.dateTime).add(number, unit).format("YYYY-MM-DDTHH:mm:ssZ")
@@ -46,4 +47,22 @@ delete_passed_events = cfy ->*
       else
         yield -> calendar.events.delete {auth, calendarId, eventId}, it
 
+replace_calendly_urls = cfy ->*
+  timeMin = moment().format("YYYY-MM-DDTHH:mm:ssZ")
+  events = yield -> calendar.events.list {auth, calendarId: primary_calendarId, timeMin}, {}, it
+  event_list = events?0?items
+  for evt in event_list
+    eventId = evt.id
+    if evt.description?
+      if evt.description.indexOf('https://calendly.com/cancellations/') != -1 or evt.description.indexOf('https://calendly.com/reschedulings/') != -1
+        ndesc = []
+        for description_line in evt.description.split('\n')
+          if description_line.indexOf('https://calendly.com/cancellations/') != -1 or description_line.indexOf('https://calendly.com/reschedulings/') != -1
+            ndesc.push 'https://calendly.com/dashboard'
+          else
+            ndesc.push description_line
+        evt.description = ndesc.join('\n')
+        yield -> calendar.events.patch {auth, calendarId: primary_calendarId, eventId, resource: evt}, it
+
+replace_calendly_urls()
 delete_passed_events()
