@@ -35,13 +35,14 @@ delete_passed_events = cfy ->*
   events = yield -> calendar.events.list {auth, calendarId}, {}, it
   event_list = events?0?items
   for evt in event_list
-    if not evt?start?
+    if not evt?start? or not evt?end?
       continue
     start_time = moment(new Date(evt.start.dateTime))
+    end_time = moment(new Date(evt.end.dateTime))
     if moment().add(1, 'hours') >= start_time
       # already passed
       eventId = evt.id
-      if evt.recurrence and evt.recurrence[0].indexOf('RRULE:FREQ=WEEKLY') != -1
+      if evt.recurrence and start_time.add(1, 'weeks') < end_time and evt.recurrence[0].indexOf('RRULE:FREQ=WEEKLY') != -1
         postpone_event evt, 1, 'weeks'
         yield -> calendar.events.patch {auth, calendarId, eventId, resource: evt}, it
       else
@@ -64,5 +65,25 @@ replace_calendly_urls = cfy ->*
         evt.description = ndesc.join('\n')
         yield -> calendar.events.patch {auth, calendarId: primary_calendarId, eventId, resource: evt}, it
 
-replace_calendly_urls()
+add_scheduling_links = cfy ->*
+  events = yield -> calendar.events.list {auth, calendarId}, {}, it
+  event_list = events?0?items
+  for evt in event_list
+    if not evt?start? or not evt?end?
+      continue
+    eventId = evt.id
+    start_time = moment(new Date(evt.start.dateTime))
+    end_time = moment(new Date(evt.end.dateTime))
+    if evt.summary == 'available' or evt.summary == '[dinner] available' or evt.summary == '[lunch] available'
+      meal_type = 'lunch'
+      if start_time.hour() >= 15 # after 3pm
+        meal_type = 'dinner'
+      title_printable = "[#{meal_type}] available #{start_time.format('hh:mma')} - #{end_time.format('hh:mma')} book at https://gkovacs.com/meet"
+      description_printable = '<a href="https://www.gkovacs.com/meet">https://www.gkovacs.com/meet</a>'
+      evt.description = description_printable
+      evt.summary = title_printable
+      yield -> calendar.events.patch {auth, calendarId, eventId, resource: evt}, it
+
 delete_passed_events()
+replace_calendly_urls()
+add_scheduling_links()
