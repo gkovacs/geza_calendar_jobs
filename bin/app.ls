@@ -21,13 +21,21 @@ auth = new google.auth.JWT(
 auth.projectId = key.project_id
 
 calendarId = getsecret('available_meals_calendar_id')
-#meals_calendarId = getsecret('meals_calendar_id')
+meals_calendarId = getsecret('meals_calendar_id')
 primary_calendarId = getsecret('primary_calendar_id')
-#secondary_calendarId = getsecret('secondary_calendar_id')
+secondary_calendarId = getsecret('secondary_calendar_id')
 
 postpone_event = (evt, number, unit) ->
   new_start = moment(evt.start.dateTime).add(number, unit).format("YYYY-MM-DDTHH:mm:ssZ")
   new_end = moment(evt.end.dateTime).add(number, unit).format("YYYY-MM-DDTHH:mm:ssZ")
+  evt.start.dateTime = new_start
+  evt.end.dateTime = new_end
+
+postpone_event_to_day = (evt, day) ->
+  orig_start = moment(evt.start.dateTime)
+  orig_end = moment(evt.end.dateTime)
+  new_start = moment(day).hours(orig_start.hours()).minutes(orig_start.minutes()).format("YYYY-MM-DDTHH:mm:ssZ")
+  new_end = moment(day).hours(orig_end.hours()).minutes(orig_start.minutes()).format("YYYY-MM-DDTHH:mm:ssZ")
   evt.start.dateTime = new_start
   evt.end.dateTime = new_end
 
@@ -44,7 +52,7 @@ delete_passed_events = cfy ->*
     if moment().add(1, 'hours') >= start_time
       # already passed
       eventId = evt.id
-      if evt.recurrence and start_time.add(1, 'weeks') < end_time and evt.recurrence.filter(it -> it.includes('RRULE:FREQ=WEEKLY')).length > 0
+      if is_weekly_recurring(evt) and start_time.add(1, 'weeks') < end_time
         # TODO: does not handle recurrence.EXDATE
         postpone_event evt, 1, 'weeks'
         yield -> calendar.events.patch {auth, calendarId, eventId, resource: evt}, it
@@ -87,7 +95,6 @@ add_scheduling_links = cfy ->*
       evt.summary = title_printable
       yield -> calendar.events.patch {auth, calendarId, eventId, resource: evt}, it
 
-/*
 is_between_time = (evt, start, end) ->
   evt_start = moment(new Date(evt.start.dateTime))
   evt_end = moment(new Date(evt.end.dateTime))
@@ -119,7 +126,7 @@ get_nonconflicting_spans_all = (conflicting_events, start, end) ->
   for val,idx in start_time_to_lengths
     if val > 0
       span_start = moment(start).add(idx, 'minutes')
-      span_end = moment(start).add(val, 'minutes')
+      span_end = moment(start).add(idx+val, 'minutes')
       output.push {start: span_start, end: span_end, minutes: val}
   return output
 
@@ -135,30 +142,106 @@ nonditchable_and_nontentative = (evt) ->
     return false
   return not (summary.includes('[ditchable]') or summary.includes('[tentative]'))
 
+is_weekly_recurring = (evt) ->
+  return evt.recurrence? and evt.recurrence.filter(-> it.includes('RRULE:FREQ=WEEKLY')).length > 0
+
+get_recrule_day_of_week_indexes = (recrule_list) ->
+  output = []
+  output_set = {}
+  days = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
+  days_to_idx = {}
+  for day,idx in days
+    days_to_idx[day] = idx
+  for recrule in recrule_list # [ 'RRULE:FREQ=WEEKLY;BYDAY=TU,TH' ]
+    for recrule_part in recrule.split(';') # RRULE:FREQ=WEEKLY;BYDAY=TU,TH
+      if not recrule_part.startsWith('BYDAY=')
+        continue
+      remainder = recrule_part.substr('BYDAY='.length) # BYDAY=TU,TH
+      for day in remainder.split(',') # TU
+        day_idx = days_to_idx[day]
+        if not output_set[day_idx]?
+          output.push day_idx
+          output_set[day_idx] = true
+  return output
+
+get_next_time_given_day_of_week_indexes = (start, day_of_week_indexes) ->
+  if day_of_week_indexes.length == 0
+    return moment(start).add(1, 'weeks')
+  start_day_of_week = start.weekday()
+  greater_day_of_week_indexes = day_of_week_indexes.filter(-> it > start_day_of_week)
+  if greater_day_of_week_indexes.length > 0
+    # later in this week
+    next_day_of_week_idx = greater_day_of_week_indexes[0]
+    return moment(start).weekday(next_day_of_week_idx)
+  next_day_of_week_idx = day_of_week_indexes[0]
+  return moment(start).weekday(next_day_of_week_idx).add(1, 'weeks')
+
+expand_recurring_events = (evt_list, start, end) ->
+  output = []
+  for evt in evt_list
+    if is_weekly_recurring(evt)
+      day_of_week_indexes = get_recrule_day_of_week_indexes evt.recurrence
+      new_start_time = moment(new Date(evt.start.dateTime))
+      while true
+        if new_start_time >= end
+          break
+        if new_start_time > start
+          new_evt = JSON.parse JSON.stringify evt
+          delete new_evt.recurrence
+          postpone_event_to_day new_evt, new_start_time
+          output.push new_evt
+        new_start_time = get_next_time_given_day_of_week_indexes(new_start_time, day_of_week_indexes)
+    else
+      output.push evt
+  return output
+
 create_available_meals = cfy ->*
   timeMin = moment().format("YYYY-MM-DDTHH:mm:ssZ")
-  events_available_meals = (yield -> calendar.events.list {auth, calendarId, timeMin}, {}, it)?0?items
-  events_meals = (yield -> calendar.events.list {auth, calendarId: meals_calendarId, timeMin}, {}, it)?0?items
-  events_primary = (yield -> calendar.events.list {auth, calendarId: primary_calendarId, timeMin}, {}, it)?0?items
-  events_secondary = (yield -> calendar.events.list {auth, calendarId: secondary_calendarId, timeMin}, {}, it)?0?items
-  current_time = moment()
-  today_start = moment(current_time).hours(0).minutes(0).seconds(0).milliseconds(0)
+  timeMax = moment().add(31, 'days').format("YYYY-MM-DDTHH:mm:ssZ")
+  events_available_meals = (yield -> calendar.events.list {auth, calendarId, timeMin, timeMax}, {}, it)?0?items
+  events_meals = (yield -> calendar.events.list {auth, calendarId: meals_calendarId, timeMin, timeMax}, {}, it)?0?items
+  events_primary = (yield -> calendar.events.list {auth, calendarId: primary_calendarId, timeMin, timeMax}, {}, it)?0?items
+  events_secondary = (yield -> calendar.events.list {auth, calendarId: secondary_calendarId, timeMin, timeMax}, {}, it)?0?items
   events_meals_actual = events_meals.filter(nonditchable_and_nontentative)
   events_all_actual = events_primary.concat(events_secondary).concat(events_meals).filter(nonditchable_and_nontentative)
-  console.log events_primary.filter(-> it.recurrence?)
-  # TODO need to check overlap with recurring events as well
-  for days_into_future from 0 til 1
+  current_time = moment()
+  today_start = moment(current_time).hours(0).minutes(0).seconds(0).milliseconds(0)
+  end_time_recurrence_expansion = moment(today_start).add(31, 'days')
+  events_meals_actual = expand_recurring_events events_meals_actual, today_start, end_time_recurrence_expansion
+  events_all_actual = expand_recurring_events events_all_actual, today_start, end_time_recurrence_expansion
+  all_available_meal_times = []
+  for days_into_future from 0 til 7
     day = moment(today_start).add(days_into_future, 'days')
+    day_weekday_num = day.weekday()
+    if day_weekday_num == 6 or day_weekday_num == 0 # saturday or sunday
+      continue
     next_day = moment(day).add(1, 'days')
-    lunchtime_start = moment(day).hours(11).minutes(50)
-    lunchtime_end = moment(day).hours(14)
-    events_all_lunchtime = events_all_actual.filter(-> is_between_time(it, lunchtime_start, lunchtime_end))
+    # lunch
+    mealtime_start = moment(day).hours(11) # 11am
+    mealtime_end = moment(day).hours(14) # 2pm
+    events_mealtime_today = events_meals_actual.filter(-> is_between_time(it, mealtime_start, mealtime_end))
+    if events_mealtime_today.length == 0
+      events_all_mealtime_today = events_all_actual.filter(-> is_between_time(it, mealtime_start, mealtime_end))
+      available_times = get_nonconflicting_spans(events_all_mealtime_today, mealtime_start, mealtime_end)
+      for available_time in available_times
+        all_available_meal_times.push available_time
+    # dinner
+    mealtime_start = moment(day).hours(17).minutes(0) # 5pm
+    mealtime_end = moment(day).hours(20).minutes(30) # 8:30pm
+    events_mealtime_today = events_meals_actual.filter(-> is_between_time(it, mealtime_start, mealtime_end))
+    if events_mealtime_today.length == 0
+      events_all_mealtime_today = events_all_actual.filter(-> is_between_time(it, mealtime_start, mealtime_end))
+      available_times = get_nonconflicting_spans(events_all_mealtime_today, mealtime_start, mealtime_end)
+      for available_time in available_times
+        all_available_meal_times.push available_time
     #console.log events_all_lunchtime
     #console.log get_nonconflicting_spans_all(events_all_lunchtime, lunchtime_start, lunchtime_end)
-    available_meals_to_output = []
-*/
+  console.log all_available_meal_times
+  # TODO compare against existing available events and delete the ones that should not exist, and create the ones that should exist
 
 delete_passed_events()
 replace_calendly_urls()
 add_scheduling_links()
 #create_available_meals()
+
+#console.log get_recrule_day_of_week_indexes([ 'RRULE:FREQ=WEEKLY;BYDAY=TU,TH' ]) # 2,4
