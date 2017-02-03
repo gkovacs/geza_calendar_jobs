@@ -89,7 +89,7 @@ add_scheduling_links = cfy ->*
       meal_type = 'lunch'
       if start_time.hour() >= 15 # after 3pm
         meal_type = 'dinner'
-      title_printable = "[#{meal_type}] available #{start_time.format('hh:mma')} - #{end_time.format('hh:mma')} book at https://gkovacs.com/meet"
+      title_printable = "[#{meal_type}] available #{start_time.format('h:mma')} - #{end_time.format('h:mma')} book at https://gkovacs.com/meet"
       description_printable = '<a href="https://www.gkovacs.com/meet">https://www.gkovacs.com/meet</a>'
       evt.description = description_printable
       evt.summary = title_printable
@@ -210,7 +210,7 @@ create_available_meals = cfy ->*
   events_meals_actual = expand_recurring_events events_meals_actual, today_start, end_time_recurrence_expansion
   events_all_actual = expand_recurring_events events_all_actual, today_start, end_time_recurrence_expansion
   all_available_meal_times = []
-  for days_into_future from 0 til 7
+  for days_into_future from 0 til 30
     day = moment(today_start).add(days_into_future, 'days')
     day_weekday_num = day.weekday()
     if day_weekday_num == 6 or day_weekday_num == 0 # saturday or sunday
@@ -236,12 +236,64 @@ create_available_meals = cfy ->*
         all_available_meal_times.push available_time
     #console.log events_all_lunchtime
     #console.log get_nonconflicting_spans_all(events_all_lunchtime, lunchtime_start, lunchtime_end)
-  console.log all_available_meal_times
+  #event_ids_to_delete = []
+  #event_ids_to_delete_set = {}
+  events_that_should_exist_set = {}
+  events_that_should_exist = []
+  for {start, end} in all_available_meal_times
+    timespan = start.format("YYYY-MM-DDTHH:mm:ssZ") + '|' + end.format("YYYY-MM-DDTHH:mm:ssZ")
+    if not events_that_should_exist_set[timespan]?
+      events_that_should_exist_set[timespan] = true
+      events_that_should_exist.push(timespan)
+  existing_event_span_to_ids = {}
+  event_ids_to_delete = []
+  event_ids_to_delete_set = {}
+  for evt in events_available_meals
+    if not evt.start? or not evt.id? or not evt.end?
+      continue
+    eventId = evt.id
+    start = moment(new Date(evt.start.dateTime)).format("YYYY-MM-DDTHH:mm:ssZ")
+    end = moment(new Date(evt.end.dateTime)).format("YYYY-MM-DDTHH:mm:ssZ")
+    timespan = start + '|' + end
+    existing_event_span_to_ids[timespan] = eventId
+    if not events_that_should_exist_set[timespan]?
+      if not event_ids_to_delete_set[eventId]
+        event_ids_to_delete_set[eventId] = true
+        event_ids_to_delete.push(eventId)
+  events_to_create = []
+  events_to_create_set = {}
+  for timespan in events_that_should_exist
+    if not existing_event_span_to_ids[timespan]?
+      if not events_to_create_set[timespan]
+        events_to_create_set[timespan] = true
+        events_to_create.push(timespan)
+  for eventId in event_ids_to_delete
+    yield -> calendar.events.delete({auth, calendarId, eventId}, {}, it)
+  for timespan in events_to_create
+    [start,end] = timespan.split('|')
+    start_moment = moment(new Date(start))
+    end_moment = moment(new Date(end))
+    event_type = '[lunch]'
+    if start_moment.hours() > 15 # after 3pm
+      event_type = '[dinner]'
+    yield -> calendar.events.insert({
+      auth
+      calendarId
+      resource: {
+        description: '<a href="https://calendly.com/geza/60min/' + start_moment.format('MM-DD-YYYY') + '">https://www.gkovacs.com/meet</a>'
+        start: {dateTime: start}
+        end: {dateTime: end}
+        summary: 'available ' + start_moment.format('h:mma') + '-' + end_moment.format('h:mma') + ' click to book'
+      }
+    }, {}, it)
+  #console.log Object.keys(events_to_create_set)
+  #console.log all_available_meal_times
+  #for evt in 
   # TODO compare against existing available events and delete the ones that should not exist, and create the ones that should exist
 
-delete_passed_events()
+#delete_passed_events()
 replace_calendly_urls()
-add_scheduling_links()
-#create_available_meals()
+#add_scheduling_links()
+create_available_meals()
 
 #console.log get_recrule_day_of_week_indexes([ 'RRULE:FREQ=WEEKLY;BYDAY=TU,TH' ]) # 2,4
