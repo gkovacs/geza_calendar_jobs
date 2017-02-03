@@ -283,7 +283,7 @@ create_available_meals = cfy ->*
         description: '<a href="https://calendly.com/geza/60min/' + start_moment.format('MM-DD-YYYY') + '">https://www.gkovacs.com/meet</a>'
         start: {dateTime: start}
         end: {dateTime: end}
-        summary: 'available ' + start_moment.format('h:mma') + '-' + end_moment.format('h:mma') + ' click to book'
+        summary: event_type + ' available ' + start_moment.format('h:mma') + '-' + end_moment.format('h:mma') + ' click to book'
       }
     }, {}, it)
   #console.log Object.keys(events_to_create_set)

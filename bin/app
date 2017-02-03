@@ -465,7 +465,7 @@
           end: {
             dateTime: end
           },
-          summary: 'available ' + start_moment.format('h:mma') + '-' + end_moment.format('h:mma') + ' click to book'
+          summary: event_type + ' available ' + start_moment.format('h:mma') + '-' + end_moment.format('h:mma') + ' click to book'
         }
       }, {}, it);
     }
