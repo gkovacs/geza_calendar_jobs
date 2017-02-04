@@ -238,6 +238,8 @@ create_available_meals = cfy ->*
   events_that_should_exist_set = {}
   events_that_should_exist = []
   for {start, end} in all_available_meal_times
+    if moment(start).tz('America/Los_Angeles').add(1, 'hours') > moment().tz('America/Los_Angeles')
+      continue
     timespan = start.format("YYYY-MM-DDTHH:mm:ssZ") + '|' + end.format("YYYY-MM-DDTHH:mm:ssZ")
     if not events_that_should_exist_set[timespan]?
       events_that_should_exist_set[timespan] = true
