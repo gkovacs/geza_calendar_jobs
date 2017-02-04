@@ -349,9 +349,6 @@
       days_into_future = i$;
       day = moment(today_start).tz('America/Los_Angeles').add(days_into_future, 'days');
       day_weekday_num = day.weekday();
-      if (day_weekday_num === 6 || day_weekday_num === 0) {
-        continue;
-      }
       next_day = moment(day).tz('America/Los_Angeles').add(1, 'days');
       mealtime_start = moment(day).tz('America/Los_Angeles').hours(11);
       mealtime_end = moment(day).tz('America/Los_Angeles').hours(14);

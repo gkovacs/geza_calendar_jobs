@@ -214,8 +214,8 @@ create_available_meals = cfy ->*
   for days_into_future from 0 til 30
     day = moment(today_start).tz('America/Los_Angeles').add(days_into_future, 'days')
     day_weekday_num = day.weekday()
-    if day_weekday_num == 6 or day_weekday_num == 0 # saturday or sunday
-      continue
+    #if day_weekday_num == 6 or day_weekday_num == 0 # saturday or sunday
+    #  continue
     next_day = moment(day).tz('America/Los_Angeles').add(1, 'days')
     # lunch
     mealtime_start = moment(day).tz('America/Los_Angeles').hours(11) # 11am
