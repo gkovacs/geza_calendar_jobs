@@ -310,9 +310,7 @@
     events_available_meals = (ref$ = (yield function(it){
       return calendar.events.list({
         auth: auth,
-        calendarId: calendarId,
-        timeMin: timeMin,
-        timeMax: timeMax
+        calendarId: calendarId
       }, {}, it);
     })) != null ? (ref1$ = ref$[0]) != null ? ref1$.items : void 8 : void 8;
     events_meals = (ref2$ = (yield function(it){
