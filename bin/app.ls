@@ -235,10 +235,6 @@ create_available_meals = cfy ->*
       available_times = get_nonconflicting_spans(events_all_mealtime_today, mealtime_start, mealtime_end)
       for available_time in available_times
         all_available_meal_times.push available_time
-    #console.log events_all_lunchtime
-    #console.log get_nonconflicting_spans_all(events_all_lunchtime, lunchtime_start, lunchtime_end)
-  #event_ids_to_delete = []
-  #event_ids_to_delete_set = {}
   events_that_should_exist_set = {}
   events_that_should_exist = []
   for {start, end} in all_available_meal_times
@@ -287,10 +283,6 @@ create_available_meals = cfy ->*
         summary: event_type + ' available ' + start_moment.format('h:mma') + '-' + end_moment.format('h:mma') + ' click to book'
       }
     }, {}, it)
-  #console.log Object.keys(events_to_create_set)
-  #console.log all_available_meal_times
-  #for evt in 
-  # TODO compare against existing available events and delete the ones that should not exist, and create the ones that should exist
 
 #delete_passed_events()
 replace_calendly_urls()
