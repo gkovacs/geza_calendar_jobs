@@ -377,7 +377,7 @@
     events_that_should_exist = [];
     for (i$ = 0, len$ = all_available_meal_times.length; i$ < len$; ++i$) {
       ref8$ = all_available_meal_times[i$], start = ref8$.start, end = ref8$.end;
-      if (moment(start).tz('America/Los_Angeles').add(1, 'hours') > moment().tz('America/Los_Angeles')) {
+      if (moment(current_time).add(1, 'hours').tz('America/Los_Angeles') > moment(start).tz('America/Los_Angeles')) {
         continue;
       }
       timespan = start.format("YYYY-MM-DDTHH:mm:ssZ") + '|' + end.format("YYYY-MM-DDTHH:mm:ssZ");
