@@ -1,6 +1,7 @@
 require! {
   getsecret
   moment
+  'moment-timezone'
 }
 
 {cfy} = require 'cfy'
@@ -26,16 +27,16 @@ primary_calendarId = getsecret('primary_calendar_id')
 secondary_calendarId = getsecret('secondary_calendar_id')
 
 postpone_event = (evt, number, unit) ->
-  new_start = moment(evt.start.dateTime).add(number, unit).format("YYYY-MM-DDTHH:mm:ssZ")
-  new_end = moment(evt.end.dateTime).add(number, unit).format("YYYY-MM-DDTHH:mm:ssZ")
+  new_start = moment(evt.start.dateTime).tz('America/Los_Angeles').add(number, unit).format("YYYY-MM-DDTHH:mm:ssZ")
+  new_end = moment(evt.end.dateTime).tz('America/Los_Angeles').add(number, unit).format("YYYY-MM-DDTHH:mm:ssZ")
   evt.start.dateTime = new_start
   evt.end.dateTime = new_end
 
 postpone_event_to_day = (evt, day) ->
-  orig_start = moment(evt.start.dateTime)
-  orig_end = moment(evt.end.dateTime)
-  new_start = moment(day).hours(orig_start.hours()).minutes(orig_start.minutes()).format("YYYY-MM-DDTHH:mm:ssZ")
-  new_end = moment(day).hours(orig_end.hours()).minutes(orig_start.minutes()).format("YYYY-MM-DDTHH:mm:ssZ")
+  orig_start = moment(evt.start.dateTime).tz('America/Los_Angeles')
+  orig_end = moment(evt.end.dateTime).tz('America/Los_Angeles')
+  new_start = moment(day).tz('America/Los_Angeles').hours(orig_start.hours()).minutes(orig_start.minutes()).format("YYYY-MM-DDTHH:mm:ssZ")
+  new_end = moment(day).tz('America/Los_Angeles').hours(orig_end.hours()).minutes(orig_start.minutes()).format("YYYY-MM-DDTHH:mm:ssZ")
   evt.start.dateTime = new_start
   evt.end.dateTime = new_end
 
@@ -47,9 +48,9 @@ delete_passed_events = cfy ->*
   for evt in event_list
     if not evt?start? or not evt?end?
       continue
-    start_time = moment(new Date(evt.start.dateTime))
-    end_time = moment(new Date(evt.end.dateTime))
-    if moment().add(1, 'hours') >= start_time
+    start_time = moment(new Date(evt.start.dateTime)).tz('America/Los_Angeles')
+    end_time = moment(new Date(evt.end.dateTime)).tz('America/Los_Angeles')
+    if moment().tz('America/Los_Angeles').add(1, 'hours') >= start_time
       # already passed
       eventId = evt.id
       if is_weekly_recurring(evt) and start_time.add(1, 'weeks') < end_time
@@ -60,7 +61,7 @@ delete_passed_events = cfy ->*
         yield -> calendar.events.delete {auth, calendarId, eventId}, it
 
 replace_calendly_urls = cfy ->*
-  timeMin = moment().format("YYYY-MM-DDTHH:mm:ssZ")
+  timeMin = moment().tz('America/Los_Angeles').format("YYYY-MM-DDTHH:mm:ssZ")
   events = yield -> calendar.events.list {auth, calendarId: primary_calendarId, timeMin}, {}, it
   event_list = events?0?items
   for evt in event_list
@@ -83,8 +84,8 @@ add_scheduling_links = cfy ->*
     if not evt?start? or not evt?end?
       continue
     eventId = evt.id
-    start_time = moment(new Date(evt.start.dateTime))
-    end_time = moment(new Date(evt.end.dateTime))
+    start_time = moment(new Date(evt.start.dateTime)).tz('America/Los_Angeles')
+    end_time = moment(new Date(evt.end.dateTime)).tz('America/Los_Angeles')
     if evt.summary == 'available' or evt.summary == '[dinner] available' or evt.summary == '[lunch] available'
       meal_type = 'lunch'
       if start_time.hour() >= 15 # after 3pm
@@ -96,12 +97,12 @@ add_scheduling_links = cfy ->*
       yield -> calendar.events.patch {auth, calendarId, eventId, resource: evt}, it
 
 is_between_time = (evt, start, end) ->
-  evt_start = moment(new Date(evt.start.dateTime))
-  evt_end = moment(new Date(evt.end.dateTime))
+  evt_start = moment(new Date(evt.start.dateTime)).tz('America/Los_Angeles')
+  evt_end = moment(new Date(evt.end.dateTime)).tz('America/Los_Angeles')
   return (evt_start < end and evt_end >= start) or (evt_start <= end and evt_end > start)
 
 to_timestamp_minutes = (moment_obj) ->
-  Math.round(moment(moment_obj).seconds(0).milliseconds(0).unix() / 60)
+  Math.round(moment(moment_obj).tz('America/Los_Angeles').seconds(0).milliseconds(0).unix() / 60)
 
 get_nonconflicting_spans_all = (conflicting_events, start, end) ->
   start_timestamp_minutes = to_timestamp_minutes start
@@ -125,8 +126,8 @@ get_nonconflicting_spans_all = (conflicting_events, start, end) ->
   output = []
   for val,idx in start_time_to_lengths
     if val > 0
-      span_start = moment(start).add(idx, 'minutes')
-      span_end = moment(start).add(idx+val, 'minutes')
+      span_start = moment(start).tz('America/Los_Angeles').add(idx, 'minutes')
+      span_end = moment(start).tz('America/Los_Angeles').add(idx+val, 'minutes')
       output.push {start: span_start, end: span_end, minutes: val}
   return output
 
@@ -166,22 +167,22 @@ get_recrule_day_of_week_indexes = (recrule_list) ->
 
 get_next_time_given_day_of_week_indexes = (start, day_of_week_indexes) ->
   if day_of_week_indexes.length == 0
-    return moment(start).add(1, 'weeks')
+    return moment(start).tz('America/Los_Angeles').add(1, 'weeks')
   start_day_of_week = start.weekday()
   greater_day_of_week_indexes = day_of_week_indexes.filter(-> it > start_day_of_week)
   if greater_day_of_week_indexes.length > 0
     # later in this week
     next_day_of_week_idx = greater_day_of_week_indexes[0]
-    return moment(start).weekday(next_day_of_week_idx)
+    return moment(start).tz('America/Los_Angeles').weekday(next_day_of_week_idx)
   next_day_of_week_idx = day_of_week_indexes[0]
-  return moment(start).weekday(next_day_of_week_idx).add(1, 'weeks')
+  return moment(start).tz('America/Los_Angeles').weekday(next_day_of_week_idx).add(1, 'weeks')
 
 expand_recurring_events = (evt_list, start, end) ->
   output = []
   for evt in evt_list
     if is_weekly_recurring(evt)
       day_of_week_indexes = get_recrule_day_of_week_indexes evt.recurrence
-      new_start_time = moment(new Date(evt.start.dateTime))
+      new_start_time = moment(new Date(evt.start.dateTime)).tz('America/Los_Angeles')
       while true
         if new_start_time >= end
           break
@@ -196,29 +197,29 @@ expand_recurring_events = (evt_list, start, end) ->
   return output
 
 create_available_meals = cfy ->*
-  timeMin = moment().format("YYYY-MM-DDTHH:mm:ssZ")
-  timeMax = moment().add(31, 'days').format("YYYY-MM-DDTHH:mm:ssZ")
+  timeMin = moment().tz('America/Los_Angeles').format("YYYY-MM-DDTHH:mm:ssZ")
+  timeMax = moment().tz('America/Los_Angeles').add(31, 'days').format("YYYY-MM-DDTHH:mm:ssZ")
   events_available_meals = (yield -> calendar.events.list {auth, calendarId, timeMin, timeMax}, {}, it)?0?items
   events_meals = (yield -> calendar.events.list {auth, calendarId: meals_calendarId, timeMin, timeMax}, {}, it)?0?items
   events_primary = (yield -> calendar.events.list {auth, calendarId: primary_calendarId, timeMin, timeMax}, {}, it)?0?items
   events_secondary = (yield -> calendar.events.list {auth, calendarId: secondary_calendarId, timeMin, timeMax}, {}, it)?0?items
   events_meals_actual = events_meals.filter(nonditchable_and_nontentative)
   events_all_actual = events_primary.concat(events_secondary).concat(events_meals).filter(nonditchable_and_nontentative)
-  current_time = moment()
-  today_start = moment(current_time).hours(0).minutes(0).seconds(0).milliseconds(0)
-  end_time_recurrence_expansion = moment(today_start).add(31, 'days')
+  current_time = moment().tz('America/Los_Angeles')
+  today_start = moment(current_time).tz('America/Los_Angeles').hours(0).minutes(0).seconds(0).milliseconds(0)
+  end_time_recurrence_expansion = moment(today_start).tz('America/Los_Angeles').add(31, 'days')
   events_meals_actual = expand_recurring_events events_meals_actual, today_start, end_time_recurrence_expansion
   events_all_actual = expand_recurring_events events_all_actual, today_start, end_time_recurrence_expansion
   all_available_meal_times = []
   for days_into_future from 0 til 30
-    day = moment(today_start).add(days_into_future, 'days')
+    day = moment(today_start).tz('America/Los_Angeles').add(days_into_future, 'days')
     day_weekday_num = day.weekday()
     if day_weekday_num == 6 or day_weekday_num == 0 # saturday or sunday
       continue
-    next_day = moment(day).add(1, 'days')
+    next_day = moment(day).tz('America/Los_Angeles').add(1, 'days')
     # lunch
-    mealtime_start = moment(day).hours(11) # 11am
-    mealtime_end = moment(day).hours(14) # 2pm
+    mealtime_start = moment(day).tz('America/Los_Angeles').hours(11) # 11am
+    mealtime_end = moment(day).tz('America/Los_Angeles').hours(14) # 2pm
     events_mealtime_today = events_meals_actual.filter(-> is_between_time(it, mealtime_start, mealtime_end))
     if events_mealtime_today.length == 0
       events_all_mealtime_today = events_all_actual.filter(-> is_between_time(it, mealtime_start, mealtime_end))
@@ -226,8 +227,8 @@ create_available_meals = cfy ->*
       for available_time in available_times
         all_available_meal_times.push available_time
     # dinner
-    mealtime_start = moment(day).hours(17).minutes(0) # 5pm
-    mealtime_end = moment(day).hours(20).minutes(30) # 8:30pm
+    mealtime_start = moment(day).tz('America/Los_Angeles').hours(17).minutes(0) # 5pm
+    mealtime_end = moment(day).tz('America/Los_Angeles').hours(20).minutes(30) # 8:30pm
     events_mealtime_today = events_meals_actual.filter(-> is_between_time(it, mealtime_start, mealtime_end))
     if events_mealtime_today.length == 0
       events_all_mealtime_today = events_all_actual.filter(-> is_between_time(it, mealtime_start, mealtime_end))
@@ -252,8 +253,8 @@ create_available_meals = cfy ->*
     if not evt.start? or not evt.id? or not evt.end?
       continue
     eventId = evt.id
-    start = moment(new Date(evt.start.dateTime)).format("YYYY-MM-DDTHH:mm:ssZ")
-    end = moment(new Date(evt.end.dateTime)).format("YYYY-MM-DDTHH:mm:ssZ")
+    start = moment(new Date(evt.start.dateTime)).tz('America/Los_Angeles').format("YYYY-MM-DDTHH:mm:ssZ")
+    end = moment(new Date(evt.end.dateTime)).tz('America/Los_Angeles').format("YYYY-MM-DDTHH:mm:ssZ")
     timespan = start + '|' + end
     existing_event_span_to_ids[timespan] = eventId
     if not events_that_should_exist_set[timespan]?
@@ -271,8 +272,8 @@ create_available_meals = cfy ->*
     yield -> calendar.events.delete({auth, calendarId, eventId}, {}, it)
   for timespan in events_to_create
     [start,end] = timespan.split('|')
-    start_moment = moment(new Date(start))
-    end_moment = moment(new Date(end))
+    start_moment = moment(new Date(start)).tz('America/Los_Angeles')
+    end_moment = moment(new Date(end)).tz('America/Los_Angeles')
     event_type = '[lunch]'
     if start_moment.hours() > 15 # after 3pm
       event_type = '[dinner]'
