@@ -177,23 +177,52 @@ get_next_time_given_day_of_week_indexes = (start, day_of_week_indexes) ->
   next_day_of_week_idx = day_of_week_indexes[0]
   return moment(start).tz('America/Los_Angeles').weekday(next_day_of_week_idx).add(1, 'weeks')
 
+is_same_date = (x, y) ->
+  return (x.date() == y.date()) and (x.month() == y.month()) and (x.year() == y.year())
+
 expand_recurring_events = (evt_list, start, end) ->
   output = []
   for evt in evt_list
     if is_weekly_recurring(evt)
       day_of_week_indexes = get_recrule_day_of_week_indexes evt.recurrence
+      exdate_items = [x for x in evt.recurrence when x.indexOf('EXDATE') == 0]
+      blacklisted_dates = []
+      if exdate_items.length > 0
+        for exdate_item in exdate_items
+          date_string = exdate_item.split(';')[*-1].split(':')[*-1]
+          for real_date_string in date_string.split(',')
+            blacklisted_date = moment.tz(real_date_string, 'America/Los_Angeles')
+            blacklisted_dates.push(blacklisted_date)
       new_start_time = moment(new Date(evt.start.dateTime)).tz('America/Los_Angeles')
       while true
         if new_start_time >= end
           break
-        if new_start_time > start
-          new_evt = JSON.parse JSON.stringify evt
-          delete new_evt.recurrence
-          postpone_event_to_day new_evt, new_start_time
-          output.push new_evt
+        if (new_start_time > start)
+          if ([is_same_date(new_start_time, x) for x in blacklisted_dates].length == 0)
+            new_evt = JSON.parse JSON.stringify evt
+            delete new_evt.recurrence
+            postpone_event_to_day new_evt, new_start_time
+            output.push new_evt
         new_start_time = get_next_time_given_day_of_week_indexes(new_start_time, day_of_week_indexes)
     else
       output.push evt
+  return output
+
+remove_duplicates = (evt_list) ->
+  evt_id_to_max_seq_number = {}
+  for evt in evt_list
+    seqnum = evt.sequence
+    id = evt.id
+    if not evt_id_to_max_seq_number[id]?
+      evt_id_to_max_seq_number[id] = seqnum
+    evt_id_to_max_seq_number[id] = Math.max(evt_id_to_max_seq_number[id], seqnum)
+  output = []
+  for evt in evt_list
+    seqnum = evt.sequence
+    id = evt.id
+    if seqnum != evt_id_to_max_seq_number[id]
+      continue
+    output.push evt
   return output
 
 create_available_meals = cfy ->*
@@ -208,6 +237,8 @@ create_available_meals = cfy ->*
   current_time = moment().tz('America/Los_Angeles')
   today_start = moment(current_time).tz('America/Los_Angeles').hours(0).minutes(0).seconds(0).milliseconds(0)
   end_time_recurrence_expansion = moment(today_start).tz('America/Los_Angeles').add(31, 'days')
+  events_meals_actual = remove_duplicates events_meals_actual
+  events_all_actual = remove_duplicates events_all_actual
   events_meals_actual = expand_recurring_events events_meals_actual, today_start, end_time_recurrence_expansion
   events_all_actual = expand_recurring_events events_all_actual, today_start, end_time_recurrence_expansion
   all_available_meal_times = []
