@@ -225,6 +225,14 @@ remove_duplicates = (evt_list) ->
     output.push evt
   return output
 
+delete_available_meals = cfy ->*
+  timeMin = moment().tz('America/Los_Angeles').format("YYYY-MM-DDTHH:mm:ssZ")
+  timeMax = moment().tz('America/Los_Angeles').add(31, 'days').format("YYYY-MM-DDTHH:mm:ssZ")
+  events_meals = (yield -> calendar.events.list {auth, calendarId, timeMin, timeMax}, {}, it)?0?items
+  for evt in events_meals
+    eventId = evt.id
+    yield -> calendar.events.delete({auth, calendarId, eventId}, {}, it)
+
 create_available_meals = cfy ->*
   timeMin = moment().tz('America/Los_Angeles').format("YYYY-MM-DDTHH:mm:ssZ")
   timeMax = moment().tz('America/Los_Angeles').add(31, 'days').format("YYYY-MM-DDTHH:mm:ssZ")
@@ -317,9 +325,11 @@ create_available_meals = cfy ->*
       }
     }, {}, it)
 
-#delete_passed_events()
-replace_calendly_urls()
 #add_scheduling_links()
-create_available_meals()
+#delete_passed_events()
+
+#replace_calendly_urls()
+#create_available_meals()
+delete_available_meals()
 
 #console.log get_recrule_day_of_week_indexes([ 'RRULE:FREQ=WEEKLY;BYDAY=TU,TH' ]) # 2,4
